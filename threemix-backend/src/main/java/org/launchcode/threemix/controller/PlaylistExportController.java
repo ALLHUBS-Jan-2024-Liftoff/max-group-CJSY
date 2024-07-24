@@ -1,13 +1,15 @@
 package org.launchcode.threemix.controller;
 
+import org.launchcode.threemix.model.BlockedArtist;
+import org.launchcode.threemix.model.BlockedSong;
+import org.launchcode.threemix.model.User;
+import org.launchcode.threemix.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.CookieValue;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
 import org.springframework.web.client.RestTemplate;
 
 import java.util.HashMap;
@@ -16,17 +18,27 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
+@CrossOrigin(origins = "http://localhost:5173")
 public class PlaylistExportController {
 
     @Autowired
     private RestTemplate restTemplate;
 
-    @CrossOrigin(origins = "http://localhost:5173")
+    @Autowired
+    private UserService userService;
+
     @GetMapping(value = "/generateTrackList", produces = "application/json")
-    public Map<String, Object> generateTrackList(@CookieValue("accessToken") String accessToken,
-                                                 @RequestParam List<String> chosenGenres) {
-        // Placeholder: Simulate fetching blocked artists and songs
-        Map<String, List<String>> blockedList = getBlockedList();
+    public ResponseEntity<Map<String, Object>> generateTrackList(@CookieValue("accessToken") String accessToken,
+                                                                 @RequestParam List<String> chosenGenres,
+                                                                 @RequestParam String username) {
+        // Get user by username
+        User user = userService.getUserByUsername(username);
+        if (user == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "User not found"));
+        }
+
+        // Fetch blocked artists and songs from the database
+        Map<String, List<String>> blockedList = getBlockedList(user);
 
         // Generate recommendations from Spotify API
         HttpHeaders headers = new HttpHeaders();
@@ -38,14 +50,22 @@ public class PlaylistExportController {
         // Filter out blocked artists and songs
         filterRecommendations(trackRecommendations, blockedList);
 
-        return trackRecommendations;
+        return ResponseEntity.ok(trackRecommendations);
     }
 
-    // Placeholder method to simulate fetching blocked artists and songs
-    private Map<String, List<String>> getBlockedList() {
+    // Fetch blocked artists and songs from the database
+    private Map<String, List<String>> getBlockedList(User user) {
+        List<String> blockedArtists = userService.getBlockedArtists(user).stream()
+                .map(BlockedArtist::getName)
+                .collect(Collectors.toList());
+        List<String> blockedSongs = userService.getBlockedSongs(user).stream()
+                .map(BlockedSong::getTitle)
+                .collect(Collectors.toList());
+
         Map<String, List<String>> blockedList = new HashMap<>();
-        blockedList.put("artists", List.of("blockedArtistId1", "blockedArtistId2"));
-        blockedList.put("songs", List.of("blockedSongId1", "blockedSongId2"));
+        blockedList.put("artists", blockedArtists);
+        blockedList.put("songs", blockedSongs);
+
         return blockedList;
     }
 
